@@ -120,6 +120,14 @@ async function handleRegistration(interaction) {
     return;
   }
 
+  const nickname = `${name} | ${characterId}`;
+  if (nickname.length > 32) {
+    await interaction.editReply(
+      'Nome e ID juntos ultrapassam o limite de 32 caracteres do apelido. Encurte um dos campos e tente novamente.',
+    );
+    return;
+  }
+
   const matchingRoles = await guild.roles.fetch();
   const roleMatches = matchingRoles.filter((role) => role.name === ROLE_NAME);
 
@@ -147,7 +155,7 @@ async function handleRegistration(interaction) {
   let roleAssigned = false;
 
   try {
-    await member.setNickname(name, 'Registro pelo painel de registro');
+    await member.setNickname(nickname, 'Registro pelo painel de registro');
     nicknameUpdated = true;
 
     await member.roles.add(role, 'Registro pelo painel de registro');
