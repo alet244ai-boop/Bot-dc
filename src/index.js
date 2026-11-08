@@ -15,6 +15,7 @@ const {
 } = require('discord.js');
 
 const { DISCORD_TOKEN, CHANNEL_ID, ROLE_NAME } = process.env;
+const ROLES_TO_REMOVE = ['🌐┃Visitantes', 'Aprovados Rec'];
 
 if (!DISCORD_TOKEN || !CHANNEL_ID || !ROLE_NAME) {
   throw new Error('Defina DISCORD_TOKEN, CHANNEL_ID e ROLE_NAME no arquivo .env.');
@@ -138,21 +139,38 @@ async function handleRegistration(interaction) {
   }
 
   const role = roleMatches.first();
+  const rolesToRemove = ROLES_TO_REMOVE.map((roleName) => {
+    const matches = matchingRoles.filter(
+      (guildRole) =>
+        guildRole.name.trim().toLowerCase() === roleName.trim().toLowerCase(),
+    );
+
+    if (matches.size !== 1) {
+      throw new Error(
+        `Esperava encontrar exatamente um cargo chamado "${roleName}", mas encontrei ${matches.size}.`,
+      );
+    }
+
+    return matches.first();
+  });
+
   const botMember = await guild.members.fetchMe();
 
   if (
     !botMember.permissions.has(PermissionFlagsBits.ManageRoles) ||
     !botMember.permissions.has(PermissionFlagsBits.ManageNicknames) ||
-    !role.editable
+    !role.editable ||
+    rolesToRemove.some((roleToRemove) => !roleToRemove.editable)
   ) {
     throw new Error(
-      `Confira se o bot tem Gerenciar cargos e Gerenciar apelidos, e se o cargo do bot está acima de "${ROLE_NAME}".`,
+      `Confira se o bot tem Gerenciar cargos e Gerenciar apelidos, e se o cargo do bot está acima de "${ROLE_NAME}", "Visitante" e "Aprovado Rec".`,
     );
   }
 
   const member = await guild.members.fetch(interaction.user.id);
   let nicknameUpdated = false;
   let roleAssigned = false;
+  let oldRolesRemoved = false;
 
   try {
     await member.setNickname(nickname, 'Registro pelo painel de registro');
@@ -160,8 +178,27 @@ async function handleRegistration(interaction) {
 
     await member.roles.add(role, 'Registro pelo painel de registro');
     roleAssigned = true;
+
+    const memberRolesToRemove = rolesToRemove.filter((roleToRemove) =>
+      member.roles.cache.has(roleToRemove.id),
+    );
+
+    if (memberRolesToRemove.length > 0) {
+      await member.roles.remove(
+        memberRolesToRemove,
+        'Registro pelo painel de registro',
+      );
+    }
+    oldRolesRemoved = true;
   } catch (error) {
     console.error('Falha ao aplicar os dados do registro:', error);
+
+    if (nicknameUpdated && roleAssigned && !oldRolesRemoved) {
+      await interaction.editReply(
+        'Seu apelido e cargo de registrado foram atualizados, mas não consegui remover os cargos antigos. Avise a equipe do servidor.',
+      );
+      return;
+    }
 
     if (nicknameUpdated && !roleAssigned) {
       await interaction.editReply(
@@ -181,7 +218,7 @@ async function handleRegistration(interaction) {
   }
 
   await interaction.editReply(
-    `Registro concluído! Apelido atualizado e cargo **${role.name}** atribuído.`,
+    `Registro concluído! Apelido atualizado, cargo **${role.name}** atribuído e cargos antigos removidos, se você os tinha.`,
   );
   console.log(`Registro concluído para o usuário ${interaction.user.id}.`);
 }
